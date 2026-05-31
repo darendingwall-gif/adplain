@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
-const API = 'http://localhost:3001';
+const API = process.env.REACT_APP_API_URL || 'https://adplain-backend-production.up.railway.app';
 
 const SCORE = {
   winner: { label: 'WINNER', bg: '#0a2016', color: '#4ade80', border: '#164d2e', dot: '#4ade80',  accent: 'rgba(74,222,128,.5)'  },
