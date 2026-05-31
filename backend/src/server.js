@@ -68,10 +68,10 @@ const generalLimiter = rateLimit({
   message:         { success: false, error: 'Too many requests. Please wait 15 minutes and try again.' },
 });
 
-// Analysis: 10 requests per hour per IP — each call hits Meta + Claude
+// Analysis: 30 requests per hour per IP — each call hits Meta + Claude
 const analysisLimiter = rateLimit({
   windowMs:       60 * 60 * 1000,
-  max:            10,
+  max:            30,
   standardHeaders: true,
   legacyHeaders:   false,
   message:         { success: false, error: 'Analysis limit reached. Please wait before running another analysis.' },
