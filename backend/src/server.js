@@ -14,6 +14,16 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// API key guard — all /api routes except /api/health
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') return next();
+  const key = req.headers['x-api-key'];
+  if (!key || key !== config.API_SECRET_KEY) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  next();
+});
+
 // Request logger — timestamp, method, path, status, response time
 app.use((req, res, next) => {
   const start = Date.now();

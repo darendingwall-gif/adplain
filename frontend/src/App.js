@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
-const API = process.env.REACT_APP_API_URL || 'https://adplain-backend-production.up.railway.app';
+const API     = process.env.REACT_APP_API_URL || 'https://adplain-backend-production.up.railway.app';
+const API_KEY = process.env.REACT_APP_API_KEY || '';
+
+function apiFetch(url) {
+  return fetch(url, { headers: { 'x-api-key': API_KEY } });
+}
 
 const SCORE = {
   winner: { label: 'WINNER', bg: '#0a2016', color: '#4ade80', border: '#164d2e', dot: '#4ade80',  accent: 'rgba(74,222,128,.5)'  },
@@ -365,7 +370,7 @@ function StatusPanel({ onClose }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/api/status`)
+    apiFetch(`${API}/api/status`)
       .then(r => r.json())
       .then(d => { setStatus(d); setLoading(false); })
       .catch(() => setLoading(false));
@@ -509,7 +514,7 @@ export default function App() {
     try {
       const params = new URLSearchParams({ dateRange: range });
       if (force) params.set('force', 'true');
-      const res  = await fetch(`${API}/api/analysis?${params}`);
+      const res  = await apiFetch(`${API}/api/analysis?${params}`);
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setData(json.results);
