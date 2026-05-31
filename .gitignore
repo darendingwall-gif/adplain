@@ -6,9 +6,12 @@ frontend/node_modules/
 # Environment — never commit secrets
 .env
 .env.local
+.env.production
 .env.*.local
 backend/.env
 frontend/.env
+frontend/.env.production
+frontend/.env.local
 
 # Build output
 frontend/build/

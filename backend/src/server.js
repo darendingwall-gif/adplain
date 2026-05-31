@@ -2,19 +2,85 @@ require('dotenv').config({ path: '.env' });
 const express   = require('express');
 const cors      = require('cors');
 const helmet    = require('helmet');
+const rateLimit = require('express-rate-limit');
 const fetch     = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
 const Anthropic = require('@anthropic-ai/sdk');
 const config    = require('./config');
 
+// ─── Item 8: Startup validation ────────────────────────────
+// Fail immediately if any required env var is missing.
+// A server with broken config is worse than no server.
+const REQUIRED_ENV = ['META_ACCESS_TOKEN', 'ANTHROPIC_API_KEY', 'API_SECRET_KEY'];
+const missing = REQUIRED_ENV.filter(k => !config[k]);
+if (missing.length) {
+  console.error(`\n  FATAL: Missing required environment variables: ${missing.join(', ')}`);
+  console.error('  Set them in your .env file or Railway environment and restart.\n');
+  process.exit(1);
+}
+
 const app    = express();
 const claude = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
-// ─── Middleware ────────────────────────────────────────────
-app.use(helmet());
-app.use(cors());
+// Trust Railway's load balancer so req.ip reflects the real client IP
+app.set('trust proxy', 1);
+
+// ─── Item 6: Helmet hardening ──────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy:       true,
+  crossOriginEmbedderPolicy:   true,
+  hsts:                        { maxAge: 31536000, includeSubDomains: true, preload: true },
+  referrerPolicy:              { policy: 'strict-origin-when-cross-origin' },
+  // hidePoweredBy, noSniff, frameguard enabled by default in helmet
+}));
+
+// ─── Item 5: CORS lockdown ─────────────────────────────────
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:3000',
+  'https://adplain-frontend.vercel.app',
+  'https://adplain.com',
+  'https://www.adplain.com',
+]);
+
+app.use(cors({
+  origin(origin, cb) {
+    // No origin = server-to-server / curl — allow
+    if (!origin) return cb(null, true);
+    // Exact match or any Vercel preview deploy for this project
+    if (ALLOWED_ORIGINS.has(origin) ||
+        /^https:\/\/adplain-frontend[-a-z0-9]*\.vercel\.app$/.test(origin)) {
+      return cb(null, true);
+    }
+    cb(new Error(`CORS: origin not allowed — ${origin}`));
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
 
-// API key guard — all /api routes except /api/health
+// ─── Item 2: Rate limiting ─────────────────────────────────
+// General: 30 requests per 15 min per IP on all /api routes
+const generalLimiter = rateLimit({
+  windowMs:       15 * 60 * 1000,
+  max:            30,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip:            (req) => req.path === '/health',
+  message:         { success: false, error: 'Too many requests. Please wait 15 minutes and try again.' },
+});
+
+// Analysis: 10 requests per hour per IP — each call hits Meta + Claude
+const analysisLimiter = rateLimit({
+  windowMs:       60 * 60 * 1000,
+  max:            10,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message:         { success: false, error: 'Analysis limit reached. Please wait before running another analysis.' },
+});
+
+app.use('/api', generalLimiter);
+
+// ─── Item 1: API key guard ─────────────────────────────────
+// Protects all /api routes except /api/health.
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
   const key = req.headers['x-api-key'];
@@ -24,32 +90,39 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Request logger — timestamp, method, path, status, response time
+// ─── Item 9: Request logging ───────────────────────────────
+// Logs: timestamp · IP · method · path · status · response time
+// Does NOT log headers or request bodies — those may contain sensitive data.
 app.use((req, res, next) => {
   const start = Date.now();
+  const ip    = req.ip || 'unknown';
   res.on('finish', () => {
     const ms  = Date.now() - start;
-    const ts  = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
+    const ts  = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const col = res.statusCode >= 400 ? '\x1b[31m' : '\x1b[32m';
-    console.log(`  ${col}${res.statusCode}\x1b[0m  [${ts}] ${req.method} ${req.path} ${ms}ms`);
+    console.log(`  ${col}${res.statusCode}\x1b[0m  ${ts}  ${ip}  ${req.method} ${req.path}  ${ms}ms`);
   });
   next();
 });
+
+// ─── Item 7: Error helper ──────────────────────────────────
+// Full error logged server-side; only a safe generic message sent to client.
+function serverError(res, clientMsg, err, context) {
+  console.error(`[ERROR] ${context}: ${err?.message || err}`);
+  return res.status(500).json({ success: false, error: clientMsg });
+}
 
 // ─── In-memory cache ──────────────────────────────────────
 // NOTE: Single-user dev mode — META_ACCESS_TOKEN is read from .env.
 // In production each user will have their own token stored in the database,
 // retrieved per-request from their authenticated session.
 const analysisCache = new Map();
-const CACHE_TTL_MS  = 30 * 60 * 1000; // 30 minutes
+const CACHE_TTL_MS  = 30 * 60 * 1000;
 
 function getCached(key) {
   const entry = analysisCache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    analysisCache.delete(key);
-    return null;
-  }
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) { analysisCache.delete(key); return null; }
   return entry;
 }
 
@@ -59,8 +132,7 @@ function setCached(key, data) {
 
 // ─── Smart ad scorer ──────────────────────────────────────
 // PAUSE if spend > $30 and fewer than 2 real results.
-// Real results = leads + purchases only.
-// Messages and contacts are interest signals, not conversions — do not count them.
+// Real results = leads + purchases only. Messages/contacts are not conversions.
 function scoreAd(ad) {
   const ctr   = parseFloat(ad.ctr   || 0);
   const cpc   = parseFloat(ad.cpc   || 0);
@@ -99,7 +171,6 @@ async function getAdData(accountId, token, dateRange = 'last_7d') {
     'spend', 'actions', 'cost_per_action_type',
     'reach', 'frequency'
   ].join(',');
-
   const url  = `https://graph.facebook.com/v19.0/${accountId}/insights` +
                `?fields=${fields}&level=ad&date_preset=${dateRange}&access_token=${token}`;
   const res  = await fetch(url);
@@ -143,7 +214,6 @@ Rules:
 - Write plain text only — no markdown formatting, no ## headers, no --- separators, no ** bold markers`
     }]
   });
-
   return message.content[0].text;
 }
 
@@ -166,15 +236,12 @@ function processAds(rawAds) {
         }
       });
     }
-
     let costPerResult = null;
     if (ad.cost_per_action_type) {
       const cpr = ad.cost_per_action_type.find(a =>
-        ['lead', 'purchase', 'contact'].includes(a.action_type)
-      );
+        ['lead', 'purchase', 'contact'].includes(a.action_type));
       if (cpr) costPerResult = parseFloat(cpr.value).toFixed(2);
     }
-
     return {
       id:          ad.ad_id || ad.ad_name,
       name:        ad.ad_name,
@@ -193,12 +260,10 @@ function processAds(rawAds) {
       costPerResult
     };
   });
-
   const order = { winner: 0, watch: 1, pause: 2 };
   return ads.sort((a, b) => order[a.score] - order[b.score]);
 }
 
-// ─── Validate dateRange param ──────────────────────────────
 function parseDateRange(query) {
   const allowed = ['last_7d', 'last_14d', 'last_30d'];
   return allowed.includes(query) ? query : 'last_7d';
@@ -207,28 +272,23 @@ function parseDateRange(query) {
 // ─── Routes ───────────────────────────────────────────────
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', product: 'AdPlain', version: '0.2.0' });
+  res.json({ status: 'ok', product: 'AdPlain', version: '0.3.0' });
 });
 
-// System status — uptime, cache, API connectivity
 app.get('/api/status', async (req, res) => {
-  const uptimeMin = Math.floor(process.uptime() / 60);
-
+  const uptimeMin    = Math.floor(process.uptime() / 60);
   const cacheEntries = [];
   for (const [key, entry] of analysisCache.entries()) {
     cacheEntries.push({
-      key,
-      ageMin:    Math.floor((Date.now() - entry.timestamp) / 60000),
+      key, ageMin: Math.floor((Date.now() - entry.timestamp) / 60000),
       timestamp: new Date(entry.timestamp).toISOString()
     });
   }
 
+  // Test API connectivity — report errors safely without leaking details
   let metaStatus = 'ok';
-  try {
-    await getAccounts(config.META_ACCESS_TOKEN);
-  } catch (e) {
-    metaStatus = `error: ${e.message}`;
-  }
+  try { await getAccounts(config.META_ACCESS_TOKEN); }
+  catch (e) { metaStatus = 'error'; console.error('[STATUS] Meta API check failed:', e.message); }
 
   let claudeStatus = 'ok';
   try {
@@ -236,16 +296,12 @@ app.get('/api/status', async (req, res) => {
       model: 'claude-haiku-4-5-20251001', max_tokens: 5,
       messages: [{ role: 'user', content: 'ping' }]
     });
-  } catch (e) {
-    claudeStatus = `error: ${e.message}`;
-  }
+  } catch (e) { claudeStatus = 'error'; console.error('[STATUS] Claude API check failed:', e.message); }
 
   res.json({
-    success:    true,
-    uptime:     { minutes: uptimeMin },
-    cache:      { count: cacheEntries.length, entries: cacheEntries },
-    metaApi:    metaStatus,
-    claudeApi:  claudeStatus,
+    success: true, uptime: { minutes: uptimeMin },
+    cache: { count: cacheEntries.length, entries: cacheEntries },
+    metaApi: metaStatus, claudeApi: claudeStatus,
     serverTime: new Date().toISOString()
   });
 });
@@ -263,23 +319,20 @@ app.get('/api/accounts', async (req, res) => {
       }))
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    serverError(res, 'Unable to fetch accounts. Please try again.', err, 'GET /api/accounts');
   }
 });
 
-// Full analysis — all accounts, with cache + dateRange support
-app.get('/api/analysis', async (req, res) => {
+app.get('/api/analysis', analysisLimiter, async (req, res) => {
   try {
     const token     = config.META_ACCESS_TOKEN;
     const dateRange = parseDateRange(req.query.dateRange);
     const force     = req.query.force === 'true';
-
-    const accounts = await getAccounts(token);
-    const results  = [];
+    const accounts  = await getAccounts(token);
+    const results   = [];
 
     for (const account of accounts) {
       const cacheKey = `${account.id}:${dateRange}`;
-
       if (!force) {
         const cached = getCached(cacheKey);
         if (cached) {
@@ -288,40 +341,29 @@ app.get('/api/analysis', async (req, res) => {
           continue;
         }
       }
-
       const spent  = account.amount_spent
         ? (parseInt(account.amount_spent) / 100).toFixed(2) : '0.00';
       const rawAds = await getAdData(account.id, token, dateRange);
-
       if (!rawAds || rawAds.length === 0) {
-        results.push({
-          id: account.id, name: account.name, spent,
-          ads: [], summary: null, status: 'no_ads', dateRange, cache: false
-        });
+        results.push({ id: account.id, name: account.name, spent, ads: [], summary: null,
+          status: 'no_ads', dateRange, cache: false });
         continue;
       }
-
-      const ads     = processAds(rawAds);
+      const ads    = processAds(rawAds);
       const summary = await generateSummary(rawAds, account.name);
-      const result  = {
-        id: account.id, name: account.name, spent, ads, summary,
-        status: 'ok', dateRange, generatedAt: new Date().toISOString()
-      };
-
+      const result  = { id: account.id, name: account.name, spent, ads, summary,
+        status: 'ok', dateRange, generatedAt: new Date().toISOString() };
       setCached(cacheKey, result);
       results.push({ ...result, cache: false });
     }
 
     res.json({ success: true, results });
-
   } catch (err) {
-    console.error('Analysis error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    serverError(res, 'Unable to fetch ad data. Please try again.', err, 'GET /api/analysis');
   }
 });
 
-// Single-account analysis
-app.get('/api/analysis/:accountId', async (req, res) => {
+app.get('/api/analysis/:accountId', analysisLimiter, async (req, res) => {
   try {
     const token     = config.META_ACCESS_TOKEN;
     const accountId = req.params.accountId;
@@ -336,45 +378,36 @@ app.get('/api/analysis/:accountId', async (req, res) => {
         return res.json({ success: true, ...cached.data, cache: true, cacheAge: ageMin });
       }
     }
-
     const rawAds = await getAdData(accountId, token, dateRange);
     if (!rawAds || rawAds.length === 0) {
       return res.json({ success: true, ads: [], summary: null, status: 'no_ads', dateRange, cache: false });
     }
-
     const ads     = processAds(rawAds);
     const summary = await generateSummary(rawAds, accountId);
     const result  = { ads, summary, status: 'ok', dateRange, generatedAt: new Date().toISOString() };
-
     setCached(cacheKey, result);
     res.json({ success: true, ...result, cache: false });
-
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    serverError(res, 'Unable to fetch ad data. Please try again.', err, `GET /api/analysis/${req.params.accountId}`);
   }
 });
 
-// Force-refresh one account and update its cache entry
 app.get('/api/refresh/:accountId', async (req, res) => {
   try {
     const token     = config.META_ACCESS_TOKEN;
     const accountId = req.params.accountId;
     const dateRange = parseDateRange(req.query.dateRange);
-
-    const rawAds = await getAdData(accountId, token, dateRange);
+    const rawAds    = await getAdData(accountId, token, dateRange);
     if (!rawAds || rawAds.length === 0) {
       return res.json({ success: true, ads: [], summary: null, status: 'no_ads', dateRange, cache: false });
     }
-
     const ads     = processAds(rawAds);
     const summary = await generateSummary(rawAds, accountId);
     const result  = { ads, summary, status: 'ok', dateRange, generatedAt: new Date().toISOString() };
-
     setCached(`${accountId}:${dateRange}`, result);
     res.json({ success: true, ...result, cache: false });
-
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    serverError(res, 'Unable to refresh data. Please try again.', err, `GET /api/refresh/${req.params.accountId}`);
   }
 });
 
@@ -382,13 +415,13 @@ app.get('/api/refresh/:accountId', async (req, res) => {
 const PORT = config.PORT;
 app.listen(PORT, () => {
   console.log('');
-  console.log(`  AdPlain API  →  http://localhost:${PORT}`);
+  console.log(`  AdPlain API  →  http://localhost:${PORT}  (v0.3.0)`);
   console.log('');
-  console.log(`  GET /api/health              server ok`);
-  console.log(`  GET /api/status              system status`);
-  console.log(`  GET /api/accounts            list accounts`);
-  console.log(`  GET /api/analysis            all accounts (dateRange, force)`);
-  console.log(`  GET /api/analysis/:id        one account`);
-  console.log(`  GET /api/refresh/:id         force-refresh one account`);
+  console.log(`  GET /api/health              public — server ok`);
+  console.log(`  GET /api/status              protected — system status`);
+  console.log(`  GET /api/accounts            protected — list accounts`);
+  console.log(`  GET /api/analysis            protected — all accounts`);
+  console.log(`  GET /api/analysis/:id        protected — one account`);
+  console.log(`  GET /api/refresh/:id         protected — force refresh`);
   console.log('');
 });
