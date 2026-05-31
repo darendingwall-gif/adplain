@@ -1,193 +1,119 @@
-/* ─── Color system ────────────────────────────────────────── */
+/* ─── Tokens ──────────────────────────────────────────────── */
 :root {
-  --bg-primary:    #0f0f0d;
-  --bg-card:       #111110;
-  --bg-elevated:   #161614;
-  --border-default:#1e1e1b;
-  --border-subtle: #252522;
-  --text-primary:  #f0ede6;
-  --text-secondary:#a8a49c;
-  --text-muted:    #504e48;
-  --green:         #4ade80;
-  --red:           #f87171;
-  --amber:         #fbbf24;
-  --green-bg:      rgba(74,222,128,.08);
-  --red-bg:        rgba(248,113,113,.08);
-  --amber-bg:      rgba(251,191,36,.08);
+  --bg:            #f7f5f1;
+  --card:          #ffffff;
+  --border:        #ece9e3;
+  --border-soft:   #f0ede8;
+
+  --ink:           #1a1916;
+  --ink-2:         #4a4840;
+  --muted:         #8a8678;
+
+  --green:         #1a6b3c;
+  --green-light:   #4ade80;
+  --green-bg:      #e8f5ee;
+  --green-border:  #b8dfc8;
+
+  --red:           #8a2a1a;
+  --red-bg:        #fdf0ee;
+  --red-border:    #e8c0b8;
+
+  --amber:         #7a4a0a;
+  --amber-bg:      #fdf8ed;
+  --amber-border:  #e8d8a0;
+
+  --hero:          #1a1916;
+  --hero-div:      rgba(255,255,255,.08);
 }
 
 /* ─── Reset ───────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-body  { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+body  { margin: 0; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; -webkit-font-smoothing: antialiased; }
 h1, h2, h3, p { margin: 0; }
 button, select { font-family: inherit; }
 
 /* ─── Animations ──────────────────────────────────────────── */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .3; }
 }
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position:  600px 0; }
 }
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.spinner {
-  animation: spin 1s linear infinite;
-}
+.pulse-dot { animation: livePulse 2.2s ease-in-out infinite; }
+
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--bg-elevated) 25%,
-    var(--border-subtle) 50%,
-    var(--bg-elevated) 75%
-  );
+  background: linear-gradient(90deg, #e8e5e0 25%, #f0ede8 50%, #e8e5e0 75%);
   background-size: 600px 100%;
   animation: shimmer 1.6s ease-in-out infinite;
-  border-radius: 6px;
-}
-.fade-in {
-  animation: fadeIn .25s ease both;
+  border-radius: 5px;
 }
 
-/* ─── Stats grid ──────────────────────────────────────────── */
-.stats-grid {
+.fade-up { animation: fadeUp .2s ease both; }
+
+/* ─── Hero stats strip ────────────────────────────────────── */
+.hero-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 48px;
+  grid-template-columns: repeat(4, 1fr);
+  max-width: 860px;
+  margin: 0 auto;
 }
+.hero-stat {
+  padding: 16px 22px;
+  border-right: 1px solid var(--hero-div);
+}
+.hero-stat:last-child { border-right: none; }
 
-/* ─── Ad card metric pills ────────────────────────────────── */
-.metrics-row {
-  display: flex;
+/* ─── Ad card metrics ─────────────────────────────────────── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.metric-pill {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  padding: 8px 14px;
-  min-width: 68px;
-}
-/* Hide CPC and Clicks on narrow screens */
-.metric-desktop { display: block; }
-
-/* ─── Account stats pills ─────────────────────────────────── */
-.account-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-.stat-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.stat-pill-green {
-  background: var(--green-bg);
-  border-color: rgba(74,222,128,.25);
-  color: var(--green);
-}
-.stat-pill-red {
-  background: var(--red-bg);
-  border-color: rgba(248,113,113,.25);
-  color: var(--red);
-}
-.stat-pill-live {
-  background: var(--green-bg);
-  border-color: rgba(74,222,128,.2);
-  color: var(--green);
-  font-size: 11px;
-}
-.stat-pill-cached {
-  background: var(--bg-elevated);
-  border-color: var(--border-default);
-  color: var(--text-muted);
-  font-size: 11px;
+  margin-bottom: 12px;
 }
 
 /* ─── Nav ─────────────────────────────────────────────────── */
-.nav-inner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.nav-status-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 5px 4px;
-  white-space: nowrap;
-}
-.nav-updated {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.nav-date  { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
-/* ─── AI summary section cards ────────────────────────────── */
-.ai-section {
-  border-radius: 14px;
-  padding: 18px 20px 16px;
-  border: 1px solid transparent;
+/* ─── Account header ──────────────────────────────────────── */
+.account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
 }
-.ai-section-green {
-  background: var(--green-bg);
-  border-color: rgba(74,222,128,.15);
-  border-top: 3px solid var(--green);
-}
-.ai-section-red {
-  background: var(--red-bg);
-  border-color: rgba(248,113,113,.15);
-  border-top: 3px solid var(--red);
-}
-.ai-section-amber {
-  background: var(--amber-bg);
-  border-color: rgba(251,191,36,.15);
-  border-top: 3px solid var(--amber);
+.account-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; border: 1px solid;
+  white-space: nowrap;
 }
 
 /* ─── Mobile ──────────────────────────────────────────────── */
-@media (max-width: 767px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 768px) {
+  .hero-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-stat:nth-child(even) { border-right: none; }
+
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+
+  .nav-date { display: none; }
+
+  .account-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
-  /* 5th box (Money at Risk) spans full width */
-  .stats-grid > *:last-child {
-    grid-column: 1 / -1;
-  }
-  .metric-desktop {
-    display: none;
-  }
-  .nav-status-btn {
-    display: none;
-  }
-  .nav-updated {
-    display: none;
-  }
-  .content-pad {
-    padding-left: 16px !important;
-    padding-right: 16px !important;
-  }
-  .ai-section {
-    padding: 16px !important;
-  }
+
+  .body-pad { padding: 16px !important; }
 }
