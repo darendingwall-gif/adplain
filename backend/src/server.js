@@ -149,8 +149,9 @@ function scoreAd(ad) {
 
   if (spend > 30 && results < 2)                 return 'pause';
   if (ctr < 0.5  || cpc > 3)                    return 'pause';
+  if (results < 1)                               return 'watch'; // no leads/purchases = never winner
   if (ctr >= 2   && cpc <= 1.5 && results >= 2) return 'winner';
-  if (ctr >= 3   && cpc <= 0.50)                return 'winner';
+  if (ctr >= 3   && cpc <= 0.50 && results >= 1) return 'winner';
   return 'watch';
 }
 

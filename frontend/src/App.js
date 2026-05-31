@@ -317,16 +317,12 @@ function AccountSection({ account, dateRangeLabel }) {
           ) : null}
         </div>
         <div className="account-pills">
-          {winners > 0 && (
-            <span className="pill" style={{ background: 'var(--green-bg)', color: 'var(--green)', borderColor: 'var(--green-border)' }}>
-              {winners} Winner{winners !== 1 ? 's' : ''}
-            </span>
-          )}
-          {pauses > 0 && (
-            <span className="pill" style={{ background: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red-border)' }}>
-              {pauses} Pause{pauses !== 1 ? 's' : ''}
-            </span>
-          )}
+          <span className="pill" style={{ background: 'var(--green-bg)', color: 'var(--green)', borderColor: 'var(--green-border)' }}>
+            {winners} Winner{winners !== 1 ? 's' : ''}
+          </span>
+          <span className="pill" style={{ background: 'var(--red-bg)', color: 'var(--red)', borderColor: 'var(--red-border)' }}>
+            {pauses} Pause{pauses !== 1 ? 's' : ''}
+          </span>
           <span className="pill" style={{ background: '#f5f3ef', color: 'var(--muted)', borderColor: '#e8e5e0' }}>
             ${totalSpend.toFixed(0)} {dateRangeLabel.toLowerCase()}
           </span>
@@ -440,7 +436,7 @@ export default function App() {
       {/* Nav */}
       <div style={{ background: '#fff', borderBottom: '1px solid var(--border)', padding: '0 24px', height: '52px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 10 }}>
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           <div className="pulse-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
           <span style={{ fontSize: '16px', fontWeight: 600, letterSpacing: '-.03em' }}>
             <span style={{ color: '#1a1916' }}>Ad</span><span style={{ color: '#1a6b3c' }}>Plain</span>
