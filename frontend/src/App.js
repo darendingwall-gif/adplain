@@ -8,16 +8,27 @@ function apiFetch(url) {
   return fetch(url, { headers: { 'x-api-key': API_KEY } });
 }
 
+// ─── Score config ─────────────────────────────────────────
 const SCORE = {
-  winner: { label: 'WINNER', bg: '#0a2016', color: '#4ade80', border: '#164d2e', dot: '#4ade80',  accent: 'rgba(74,222,128,.5)'  },
-  pause:  { label: 'PAUSE',  bg: '#200a0a', color: '#f87171', border: '#4d1616', dot: '#f87171',  accent: 'rgba(248,113,113,.5)' },
-  watch:  { label: 'WATCH',  bg: '#1a1500', color: '#fbbf24', border: '#4d3d00', dot: '#fbbf24',  accent: 'rgba(251,191,36,.4)'  },
+  winner: {
+    label: 'WINNER', color: 'var(--green)', dot: 'var(--green)',
+    bg: 'rgba(74,222,128,.08)', border: 'rgba(74,222,128,.2)',
+    leftBorder: 'var(--green)', glow: '0 0 0 1px rgba(74,222,128,.1), 0 4px 24px rgba(74,222,128,.07)',
+  },
+  pause: {
+    label: 'PAUSE', color: 'var(--red)', dot: 'var(--red)',
+    bg: 'rgba(248,113,113,.08)', border: 'rgba(248,113,113,.2)',
+    leftBorder: 'var(--red)', glow: 'none',
+  },
+  watch: {
+    label: 'WATCH', color: 'var(--amber)', dot: 'var(--amber)',
+    bg: 'rgba(251,191,36,.08)', border: 'rgba(251,191,36,.2)',
+    leftBorder: 'var(--amber)', glow: 'none',
+  },
 };
 
-const SECTION_STYLE = {
-  '🟢': { color: '#4ade80', bg: 'rgba(74,222,128,.05)',  border: 'rgba(74,222,128,.14)'  },
-  '🔴': { color: '#f87171', bg: 'rgba(248,113,113,.05)', border: 'rgba(248,113,113,.14)' },
-  '💡': { color: '#fbbf24', bg: 'rgba(251,191,36,.05)',  border: 'rgba(251,191,36,.14)'  },
+const DATE_LABELS = {
+  last_7d: 'Last 7 days', last_14d: 'Last 14 days', last_30d: 'Last 30 days',
 };
 
 // ─── ScoreBadge ───────────────────────────────────────────
@@ -25,9 +36,9 @@ function ScoreBadge({ score }) {
   const s = SCORE[score] || SCORE.watch;
   return (
     <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: '6px',
+      display: 'inline-flex', alignItems: 'center', gap: '5px',
       background: s.bg, border: `1px solid ${s.border}`,
-      borderRadius: '6px', padding: '4px 10px', flexShrink: 0,
+      borderRadius: '6px', padding: '4px 9px', flexShrink: 0,
     }}>
       <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.dot }} />
       <span style={{ fontSize: '11px', fontWeight: 700, color: s.color, letterSpacing: '.08em' }}>
@@ -38,28 +49,29 @@ function ScoreBadge({ score }) {
 }
 
 // ─── StatBox ─────────────────────────────────────────────
-function StatBox({ label, value, sub, color, accent }) {
+function StatBox({ label, value, sub, color, accentColor, accentBg }) {
   return (
     <div style={{
-      background: '#111110',
-      border: '1px solid #252522',
-      ...(accent && { borderLeft: `3px solid ${accent}` }),
-      borderRadius: '10px', padding: '18px 18px', flex: 1, minWidth: '80px',
+      background: accentBg || 'var(--bg-card)',
+      border: '1px solid var(--border-subtle)',
+      borderLeft: accentColor ? `3px solid ${accentColor}` : '1px solid var(--border-subtle)',
+      borderRadius: '12px',
+      padding: '16px 18px',
     }}>
       <div style={{
-        fontSize: '10px', fontWeight: 600, letterSpacing: '.09em',
-        textTransform: 'uppercase', color: '#504e48', marginBottom: '8px',
+        fontSize: '10px', fontWeight: 700, letterSpacing: '.1em',
+        textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '10px',
       }}>
         {label}
       </div>
       <div style={{
-        fontSize: '28px', fontWeight: 700, color: color || '#f0ede6',
-        letterSpacing: '-.03em', lineHeight: 1,
+        fontSize: '34px', fontWeight: 800, color: color || 'var(--text-primary)',
+        letterSpacing: '-.04em', lineHeight: 1,
       }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: '11px', color: '#504e48', marginTop: '6px' }}>{sub}</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '7px' }}>{sub}</div>
       )}
     </div>
   );
@@ -67,76 +79,127 @@ function StatBox({ label, value, sub, color, accent }) {
 
 // ─── SummaryStrip ─────────────────────────────────────────
 function SummaryStrip({ results }) {
-  const totalSpend   = results.reduce((s, r) => s + r.ads.reduce((a, ad) => a + parseFloat(ad.spend), 0), 0);
-  const totalWinners = results.reduce((s, r) => s + r.ads.filter(a => a.score === 'winner').length, 0);
-  const totalPauses  = results.reduce((s, r) => s + r.ads.filter(a => a.score === 'pause').length, 0);
-  const totalAds     = results.reduce((s, r) => s + r.ads.length, 0);
-  const moneySaved   = results.reduce((s, r) =>
+  const totalSpend  = results.reduce((s, r) => s + r.ads.reduce((a, ad) => a + parseFloat(ad.spend), 0), 0);
+  const totalAds    = results.reduce((s, r) => s + r.ads.length, 0);
+  const totalWin    = results.reduce((s, r) => s + r.ads.filter(a => a.score === 'winner').length, 0);
+  const totalPause  = results.reduce((s, r) => s + r.ads.filter(a => a.score === 'pause').length, 0);
+  const moneyAtRisk = results.reduce((s, r) =>
     s + r.ads.filter(a => a.score === 'pause').reduce((a, ad) => a + parseFloat(ad.spend), 0), 0);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '48px' }}>
-      <StatBox label="7-Day Spend"  value={`$${totalSpend.toFixed(0)}`} sub="across all accounts" />
-      <StatBox label="Ads Running"  value={totalAds}                     sub="active this week" />
-      <StatBox label="Winners"      value={totalWinners} color="#4ade80"  sub="performing well"
-               accent="#4ade80" />
-      <StatBox label="Pause Today"  value={totalPauses}  color="#f87171"
-               sub={`~$${moneySaved.toFixed(0)} wasted/wk`} accent="#f87171" />
+    <div className="stats-grid">
+      <StatBox label="7-Day Spend"    value={`$${totalSpend.toFixed(0)}`}   sub="across all accounts" />
+      <StatBox label="Active Ads"     value={totalAds}                       sub="running this week" />
+      <StatBox label="Winners"        value={totalWin}    color="var(--green)"
+               accentColor="var(--green)"  accentBg="var(--green-bg)"
+               sub={`${totalWin === 1 ? 'ad' : 'ads'} performing well`} />
+      <StatBox label="Pause Today"    value={totalPause}  color="var(--red)"
+               accentColor="var(--red)"    accentBg="var(--red-bg)"
+               sub={`${totalPause === 1 ? 'ad' : 'ads'} to stop`} />
+      <StatBox label="Money at Risk"  value={`$${moneyAtRisk.toFixed(0)}`} color="var(--red)"
+               accentColor="var(--red)"    accentBg="var(--red-bg)"
+               sub="spent on pause ads" />
+    </div>
+  );
+}
+
+// ─── SkeletonCard ─────────────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border-default)',
+      borderLeft: '3px solid var(--border-subtle)',
+      borderRadius: '12px', padding: '20px 22px', marginBottom: '12px',
+    }}>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', alignItems: 'center' }}>
+        <div className="skeleton" style={{ width: '62px', height: '24px', borderRadius: '6px' }} />
+        <div className="skeleton" style={{ flex: 1, height: '16px', maxWidth: '200px' }} />
+      </div>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+        {[80, 72, 72, 80].map((w, i) => (
+          <div key={i} className="skeleton" style={{ width: w, height: '52px', borderRadius: '8px' }} />
+        ))}
+      </div>
+      <div className="skeleton" style={{ height: '3px', borderRadius: '2px' }} />
+    </div>
+  );
+}
+
+// ─── LoadingMessages ──────────────────────────────────────
+const LOADING_MSGS = ['Reading your ads...', 'Comparing performance...', 'Writing your summary...'];
+
+function LoadingState() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % LOADING_MSGS.length), 3000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div style={{ paddingTop: '24px' }}>
+      <SkeletonCard />
+      <SkeletonCard />
+      <div style={{ textAlign: 'center', padding: '32px 0 16px' }}>
+        <div style={{ fontSize: '15px', color: 'var(--text-secondary)', marginBottom: '6px', minHeight: '24px' }}>
+          {LOADING_MSGS[idx]}
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          AI is reading every ad · takes 20–40 seconds
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─── AdCard ───────────────────────────────────────────────
-function AdCard({ ad, maxSpend }) {
-  const s      = SCORE[ad.score] || SCORE.watch;
-  const spendN = parseFloat(ad.spend);
-  const pct    = maxSpend > 0 ? Math.round((spendN / maxSpend) * 100) : 0;
+function AdCard({ ad, totalAccountSpend }) {
+  const s    = SCORE[ad.score] || SCORE.watch;
+  const pct  = totalAccountSpend > 0
+    ? Math.min(100, Math.round((parseFloat(ad.spend) / totalAccountSpend) * 100))
+    : 0;
+
+  const allMetrics = [
+    { label: 'Spend',      value: `$${ad.spend}`,              desktop: false },
+    { label: 'CTR',        value: `${ad.ctr}%`,                desktop: false },
+    ...(ad.costPerResult ? [{ label: 'Cost/Result', value: `$${ad.costPerResult}`, desktop: false }] : []),
+    { label: 'CPC',        value: `$${ad.cpc}`,                desktop: true  },
+    { label: 'Clicks',     value: ad.clicks.toLocaleString(),   desktop: true  },
+  ];
 
   return (
-    <div style={{
-      background: '#111110',
-      border: '1px solid #1e1e1b',
-      borderLeft: `3px solid ${s.accent}`,
-      borderRadius: '12px', padding: '20px 22px', marginBottom: '12px',
+    <div className="fade-in" style={{
+      background: 'var(--bg-card)',
+      border: '1px solid var(--border-default)',
+      borderLeft: `3px solid ${s.leftBorder}`,
+      borderRadius: '12px', padding: '18px 20px', marginBottom: '12px',
+      boxShadow: s.glow,
     }}>
-      {/* Name + badge */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'flex-start', marginBottom: '14px', gap: '12px',
-      }}>
+      {/* Badge + name row — badge is FIRST (left) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '14px' }}>
+        <ScoreBadge score={ad.score} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: '14px', fontWeight: 600, color: '#f0ede6',
-            marginBottom: '3px', whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis',
+            fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)',
+            lineHeight: 1.3, marginBottom: '2px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {ad.name}
           </div>
-          <div style={{ fontSize: '12px', color: '#504e48' }}>{ad.campaign}</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{ad.campaign}</div>
         </div>
-        <ScoreBadge score={ad.score} />
       </div>
 
       {/* Metrics */}
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
-        {[
-          { label: 'Spend',      value: `$${ad.spend}` },
-          { label: 'CTR',        value: `${ad.ctr}%` },
-          { label: 'CPC',        value: `$${ad.cpc}` },
-          { label: 'Clicks',     value: ad.clicks.toLocaleString() },
-          ...(ad.costPerResult ? [{ label: 'Per Result', value: `$${ad.costPerResult}` }] : []),
-        ].map((m, i) => (
-          <div key={i} style={{
-            background: '#0f0f0d', border: '1px solid #1e1e1b',
-            borderRadius: '8px', padding: '8px 12px', minWidth: '70px',
-          }}>
+      <div className="metrics-row">
+        {allMetrics.map((m, i) => (
+          <div key={i} className={`metric-pill${m.desktop ? ' metric-desktop' : ''}`}>
             <div style={{
-              fontSize: '10px', color: '#504e48', fontWeight: 600,
-              letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: '3px',
+              fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600,
+              letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: '4px',
             }}>
               {m.label}
             </div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#f0ede6' }}>
+            <div style={{ fontSize: '17px', fontWeight: 700, color: 'var(--text-primary)' }}>
               {m.value}
             </div>
           </div>
@@ -151,23 +214,23 @@ function AdCard({ ad, maxSpend }) {
                          cv.type === 'Contacts' ? '📞' : '💬';
             return (
               <span key={i} style={{
-                background: '#0a2016', border: '1px solid #164d2e',
-                color: '#4ade80', borderRadius: '6px',
-                padding: '4px 10px', fontSize: '12px', fontWeight: 600,
+                background: 'rgba(74,222,128,.08)', border: '1px solid rgba(74,222,128,.2)',
+                color: 'var(--green)', borderRadius: '8px',
+                padding: '5px 12px', fontSize: '13px', fontWeight: 700,
               }}>
-                {icon} {cv.type}: {cv.value}
+                {icon} {cv.value} {cv.type}
               </span>
             );
           })}
         </div>
       )}
 
-      {/* Spend progress bar */}
-      <div style={{ height: '3px', background: '#1a1a17', borderRadius: '2px' }}>
+      {/* Spend bar — % of total account spend */}
+      <div style={{ height: '3px', background: 'var(--bg-elevated)', borderRadius: '2px' }}>
         <div style={{
           height: '100%', width: `${pct}%`,
-          background: s.accent, borderRadius: '2px',
-          transition: 'width .4s ease',
+          background: s.leftBorder, borderRadius: '2px',
+          transition: 'width .5s ease', opacity: 0.5,
         }} />
       </div>
     </div>
@@ -175,7 +238,12 @@ function AdCard({ ad, maxSpend }) {
 }
 
 // ─── AISummary ────────────────────────────────────────────
+const AI_SECTION_CLASS = { '🟢': 'ai-section-green', '🔴': 'ai-section-red', '💡': 'ai-section-amber' };
+const AI_SECTION_COLOR = { '🟢': 'var(--green)', '🔴': 'var(--red)', '💡': 'var(--amber)' };
+
 function AISummary({ summary }) {
+  const [expanded, setExpanded] = useState({});
+
   if (!summary) return null;
 
   const cleaned = summary
@@ -188,52 +256,42 @@ function AISummary({ summary }) {
 
   return (
     <div style={{
-      background: '#111110', border: '1px solid rgba(74,222,128,.12)',
-      borderRadius: '16px', padding: '28px 32px', marginBottom: '28px',
+      background: 'var(--bg-card)', border: '1px solid rgba(74,222,128,.12)',
+      borderRadius: '16px', padding: '22px 24px', marginBottom: '28px',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
         <span style={{
           background: 'rgba(74,222,128,.1)', border: '1px solid rgba(74,222,128,.2)',
-          color: '#4ade80', borderRadius: '999px', padding: '3px 12px',
+          color: 'var(--green)', borderRadius: '999px', padding: '3px 12px',
           fontSize: '11px', fontWeight: 700, letterSpacing: '.08em',
         }}>
           ✦ AI ANALYSIS
         </span>
-        <span style={{ fontSize: '12px', color: '#504e48' }}>Plain English · Updated just now</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Plain English · Updated just now</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {sections.map((section, i) => {
           const trim  = section.trim();
           const emoji = trim.startsWith('🟢') ? '🟢' : trim.startsWith('🔴') ? '🔴' : '💡';
-          const style = SECTION_STYLE[emoji] || SECTION_STYLE['💡'];
+          const color = AI_SECTION_COLOR[emoji];
+          const cls   = AI_SECTION_CLASS[emoji] || 'ai-section-amber';
           const lines = trim.split('\n').filter(l => l.trim());
           const header    = lines[0];
           const bodyLines = lines.slice(1).filter(l => l.trim());
-          const bodyText  = bodyLines.join(' ');
+          const isSteps   = emoji === '💡';
+          const isOpen    = expanded[i] || false;
 
-          // Pull first sentence as headline
-          const dotIdx   = bodyText.search(/[.!?](?=\s|$)/);
-          const headline = dotIdx >= 0 ? bodyText.slice(0, dotIdx + 1) : bodyText.slice(0, 120);
-          const rest     = dotIdx >= 0 ? bodyText.slice(dotIdx + 1).trim() : '';
-
-          const isSteps = emoji === '💡';
-
-          return (
-            <div key={i} style={{
-              background: style.bg, border: `1px solid ${style.border}`,
-              borderRadius: '12px', padding: '20px 22px',
-            }}>
-              {/* Section label */}
-              <div style={{
-                fontSize: '11px', fontWeight: 700, color: style.color,
-                letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: '10px',
-              }}>
-                {header}
-              </div>
-
-              {isSteps ? (
-                // Numbered steps — each step gets its own row with a number badge
+          if (isSteps) {
+            return (
+              <div key={i} className={`ai-section ${cls}`}>
+                <div style={{
+                  fontSize: '11px', fontWeight: 700, color, letterSpacing: '.1em',
+                  textTransform: 'uppercase', marginBottom: '14px',
+                }}>
+                  {header}
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {bodyLines.map((step, j) => {
                     const m    = step.match(/^(\d+)\.\s*(?:\[([^\]]+)\]\s*)?(.+)/s);
@@ -242,20 +300,21 @@ function AISummary({ summary }) {
                     const text = m ? m[3] : step;
                     return (
                       <div key={j} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                        {/* Circle number badge */}
                         <div style={{
-                          flexShrink: 0, width: '22px', height: '22px',
-                          background: style.border, borderRadius: '50%',
+                          flexShrink: 0, width: '24px', height: '24px', borderRadius: '50%',
+                          background: `${color}18`, border: `1px solid ${color}40`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '11px', fontWeight: 700, color: style.color,
+                          fontSize: '11px', fontWeight: 800, color,
                         }}>
                           {num}
                         </div>
-                        <div style={{ fontSize: '13px', color: '#a8a49c', lineHeight: 1.65 }}>
+                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.65, paddingTop: '3px' }}>
                           {time && (
                             <span style={{
-                              fontSize: '11px', fontWeight: 600, color: style.color,
-                              background: style.border, borderRadius: '4px',
-                              padding: '1px 6px', marginRight: '6px',
+                              fontSize: '10px', fontWeight: 700, color,
+                              background: `${color}15`, borderRadius: '4px',
+                              padding: '1px 6px', marginRight: '7px', letterSpacing: '.04em',
                             }}>
                               {time}
                             </span>
@@ -266,27 +325,52 @@ function AISummary({ summary }) {
                     );
                   })}
                 </div>
-              ) : (
-                // Text section — bold headline + lighter body
-                <div>
-                  {headline && (
-                    <div style={{
-                      fontSize: '14px', fontWeight: 600, color: '#d8d4cc',
-                      lineHeight: 1.5, marginBottom: rest ? '8px' : 0,
-                    }}>
-                      {headline}
-                    </div>
-                  )}
-                  {rest && (
-                    <div style={{ fontSize: '13px', color: '#7a7670', lineHeight: 1.75 }}>
-                      {rest}
-                    </div>
-                  )}
+              </div>
+            );
+          }
+
+          // Text sections — first 2 sentences visible, rest behind toggle
+          const bodyText = bodyLines.join(' ');
+          const sentences = bodyText.match(/[^.!?]*[.!?]+/g) || [bodyText];
+          const preview   = sentences.slice(0, 2).join(' ').trim();
+          const rest      = sentences.slice(2).join(' ').trim();
+          const hasMore   = rest.length > 0;
+
+          return (
+            <div key={i} className={`ai-section ${cls}`}>
+              <div style={{
+                fontSize: '11px', fontWeight: 700, color, letterSpacing: '.1em',
+                textTransform: 'uppercase', marginBottom: '12px',
+              }}>
+                {header}
+              </div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.55, marginBottom: '6px' }}>
+                {preview}
+              </div>
+              {isOpen && rest && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.75, marginBottom: '10px' }}>
+                  {rest}
                 </div>
+              )}
+              {hasMore && (
+                <button
+                  onClick={() => setExpanded(e => ({ ...e, [i]: !e[i] }))}
+                  style={{
+                    background: 'none', border: 'none', padding: 0,
+                    fontSize: '12px', fontWeight: 600, color,
+                    cursor: 'pointer', letterSpacing: '.02em',
+                  }}
+                >
+                  {isOpen ? '↑ Show less' : '↓ Show full analysis'}
+                </button>
               )}
             </div>
           );
         })}
+      </div>
+
+      <div style={{ fontSize: '10px', color: 'var(--text-muted)', textAlign: 'center', marginTop: '16px', letterSpacing: '.04em' }}>
+        Generated by Claude AI · Not financial advice
       </div>
     </div>
   );
@@ -294,72 +378,78 @@ function AISummary({ summary }) {
 
 // ─── AccountSection ───────────────────────────────────────
 function AccountSection({ account, dateRangeLabel }) {
-  const weeklySpend = account.ads.reduce((s, a) => s + parseFloat(a.spend), 0);
-  const winners     = account.ads.filter(a => a.score === 'winner').length;
-  const pauses      = account.ads.filter(a => a.score === 'pause').length;
-  const maxSpend    = account.ads.reduce((m, a) => Math.max(m, parseFloat(a.spend)), 0);
+  const totalSpend       = account.ads.reduce((s, a) => s + parseFloat(a.spend), 0);
+  const totalAccountSpend = totalSpend; // alias for AdCard prop clarity
+  const winners          = account.ads.filter(a => a.score === 'winner').length;
+  const pauses           = account.ads.filter(a => a.score === 'pause').length;
 
   return (
     <div style={{ marginBottom: '72px' }}>
       {/* Account header */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
         marginBottom: '28px', paddingBottom: '20px',
-        borderBottom: '1px solid #1e1e1b', flexWrap: 'wrap', gap: '12px',
+        borderBottom: '1px solid var(--border-default)',
       }}>
-        <div>
-          <div style={{
-            fontSize: '10px', fontWeight: 700, letterSpacing: '.12em',
-            textTransform: 'uppercase', color: '#504e48', marginBottom: '4px',
-          }}>
-            Ad Account
-          </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#f0ede6', letterSpacing: '-.02em' }}>
-            {account.name}
-          </div>
-          {account.cache && (
-            <div style={{ fontSize: '11px', color: '#504e48', marginTop: '4px' }}>
-              Cached · {account.cacheAge}m ago
-            </div>
-          )}
-          {!account.cache && account.generatedAt && (
-            <div style={{ fontSize: '11px', color: 'rgba(74,222,128,.5)', marginTop: '4px' }}>
-              Live data
-            </div>
-          )}
+        <div style={{
+          fontSize: '10px', fontWeight: 700, letterSpacing: '.12em',
+          textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '6px',
+        }}>
+          Ad Account
         </div>
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-end' }}>
-          {[
-            { label: dateRangeLabel + ' Spend', value: `$${weeklySpend.toFixed(2)}`, color: '#f0ede6' },
-            { label: 'Winners',                  value: winners,                      color: '#4ade80' },
-            { label: 'Pause',                    value: pauses,                       color: pauses > 0 ? '#f87171' : '#504e48' },
-          ].map((stat, i) => (
-            <div key={i} style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '10px', color: '#504e48', marginBottom: '2px',
-                            textTransform: 'uppercase', letterSpacing: '.08em' }}>
-                {stat.label}
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 700, color: stat.color }}>
-                {stat.value}
-              </div>
-            </div>
-          ))}
+        <div style={{
+          fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)',
+          letterSpacing: '-.03em', lineHeight: 1.1, marginBottom: '10px',
+        }}>
+          {account.name}
+        </div>
+        {/* Inline stat pills */}
+        <div className="account-stats">
+          {account.cache ? (
+            <span className="stat-pill stat-pill-cached">
+              ⏱ Cached · {account.cacheAge}m ago
+            </span>
+          ) : account.generatedAt ? (
+            <span className="stat-pill stat-pill-live">
+              ● Live data
+            </span>
+          ) : null}
+          <span className="stat-pill">
+            ${totalSpend.toFixed(0)} {dateRangeLabel.toLowerCase()}
+          </span>
+          {winners > 0 && (
+            <span className="stat-pill stat-pill-green">
+              ↑ {winners} winner{winners !== 1 ? 's' : ''}
+            </span>
+          )}
+          {pauses > 0 && (
+            <span className="stat-pill stat-pill-red">
+              ⚠ {pauses} pause{pauses !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* No ads */}
+      {/* Empty state */}
       {account.status === 'no_ads' && (
         <div style={{
-          textAlign: 'center', padding: '48px', color: '#504e48',
-          background: '#111110', border: '1px solid #1e1e1b',
-          borderRadius: '12px', fontSize: '14px',
+          textAlign: 'center', padding: '56px 32px',
+          background: 'var(--bg-card)', border: '1px solid var(--border-default)',
+          borderRadius: '16px',
         }}>
-          No ads ran in the last {dateRangeLabel.toLowerCase()}
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📊</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+            No ads this week
+          </div>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', maxWidth: '300px', margin: '0 auto', lineHeight: 1.6 }}>
+            Connect a campaign in Meta Ads Manager and AdPlain will analyze it here.
+          </div>
         </div>
       )}
 
       {account.summary && <AISummary summary={account.summary} />}
-      {account.ads.map((ad, i) => <AdCard key={i} ad={ad} maxSpend={maxSpend} />)}
+      {account.ads.map((ad, i) => (
+        <AdCard key={i} ad={ad} totalAccountSpend={totalAccountSpend} />
+      ))}
     </div>
   );
 }
@@ -376,114 +466,56 @@ function StatusPanel({ onClose }) {
       .catch(() => setLoading(false));
   }, []);
 
-  const dot = ok => (
-    <span style={{
-      display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%',
-      background: ok ? '#4ade80' : '#f87171', marginRight: '8px', flexShrink: 0,
-    }} />
-  );
-
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)',
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end',
-        zIndex: 100, padding: '60px 24px 0',
+        zIndex: 100, padding: '60px 20px 0',
       }}
       onClick={onClose}
     >
       <div
         style={{
-          background: '#111110', border: '1px solid #252522',
-          borderRadius: '16px', padding: '24px 28px', width: '340px',
+          background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+          borderRadius: '16px', padding: '22px 26px', width: '320px',
           maxHeight: '80vh', overflowY: 'auto',
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          marginBottom: '20px',
-        }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: '#f0ede6' }}>System Status</div>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#504e48',
-            fontSize: '18px', cursor: 'pointer', lineHeight: 1,
-          }}>✕</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>System Status</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer' }}>✕</button>
         </div>
 
         {loading && (
-          <div style={{ fontSize: '13px', color: '#504e48', textAlign: 'center', padding: '20px 0' }}>
-            Checking...
-          </div>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>Checking...</div>
         )}
 
         {status && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Services */}
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.1em',
-                            textTransform: 'uppercase', color: '#504e48', marginBottom: '10px' }}>
-                Services
-              </div>
-              {[
-                { label: 'Meta API',   ok: status.metaApi   === 'ok', detail: status.metaApi   },
-                { label: 'Claude API', ok: status.claudeApi === 'ok', detail: status.claudeApi },
-              ].map((s, i) => (
-                <div key={i} style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '8px 0', borderBottom: '1px solid #1e1e1b',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', fontSize: '13px', color: '#a8a49c' }}>
-                    {dot(s.ok)} {s.label}
-                  </div>
-                  <div style={{ fontSize: '12px', color: s.ok ? '#4ade80' : '#f87171' }}>
-                    {s.ok ? 'connected' : 'error'}
-                  </div>
+            {[
+              { label: 'Meta API',   ok: status.metaApi   === 'ok' },
+              { label: 'Claude API', ok: status.claudeApi === 'ok' },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border-default)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: s.ok ? 'var(--green)' : 'var(--red)', display: 'inline-block' }} />
+                  {s.label}
                 </div>
-              ))}
-            </div>
-
-            {/* Server */}
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.1em',
-                            textTransform: 'uppercase', color: '#504e48', marginBottom: '10px' }}>
-                Server
+                <span style={{ fontSize: '12px', color: s.ok ? 'var(--green)' : 'var(--red)' }}>{s.ok ? 'connected' : 'error'}</span>
               </div>
-              {[
-                { label: 'Uptime',       value: `${status.uptime?.minutes ?? '—'}m` },
-                { label: 'Cache entries', value: status.cache?.count ?? 0 },
-              ].map((row, i) => (
-                <div key={i} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '8px 0', borderBottom: '1px solid #1e1e1b',
-                  fontSize: '13px',
-                }}>
-                  <span style={{ color: '#a8a49c' }}>{row.label}</span>
-                  <span style={{ color: '#f0ede6', fontWeight: 600 }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Cache entries */}
-            {status.cache?.count > 0 && (
-              <div>
-                <div style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '.1em',
-                              textTransform: 'uppercase', color: '#504e48', marginBottom: '10px' }}>
-                  Cached Analyses
-                </div>
-                {status.cache.entries.map((e, i) => (
-                  <div key={i} style={{
-                    fontSize: '12px', color: '#7a7670', padding: '5px 0',
-                    borderBottom: '1px solid #1a1a17',
-                  }}>
-                    <span style={{ color: '#a8a49c' }}>{e.key}</span>
-                    <span style={{ float: 'right' }}>{e.ageMin}m ago</span>
-                  </div>
-                ))}
+            ))}
+            {[
+              { label: 'Uptime',        value: `${status.uptime?.minutes ?? '—'}m` },
+              { label: 'Cached results', value: status.cache?.count ?? 0 },
+            ].map((row, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-default)', fontSize: '13px' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>{row.label}</span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{row.value}</span>
               </div>
-            )}
-
-            <div style={{ fontSize: '11px', color: '#3a3a35', textAlign: 'center', paddingTop: '4px' }}>
+            ))}
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
               {new Date(status.serverTime).toLocaleTimeString()}
             </div>
           </div>
@@ -494,12 +526,6 @@ function StatusPanel({ onClose }) {
 }
 
 // ─── Main App ─────────────────────────────────────────────
-const DATE_LABELS = {
-  last_7d:  'Last 7 days',
-  last_14d: 'Last 14 days',
-  last_30d: 'Last 30 days',
-};
-
 export default function App() {
   const [data,       setData]       = useState(null);
   const [loading,    setLoading]    = useState(true);
@@ -526,46 +552,42 @@ export default function App() {
     }
   }
 
-  // Refetch whenever the date range changes (also runs on initial mount)
   useEffect(() => { fetchAnalysis(false, dateRange); }, [dateRange]); // eslint-disable-line
 
   const dateRangeLabel = DATE_LABELS[dateRange] || 'Last 7 days';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f0f0d' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
 
       {/* Nav */}
       <div style={{
-        background: '#111110', borderBottom: '1px solid #1e1e1b',
-        padding: '0 28px', height: '52px',
+        background: 'var(--bg-card)', borderBottom: '1px solid var(--border-default)',
+        padding: '0 20px', height: '52px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 10,
       }}>
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 700, fontSize: '17px', color: '#f0ede6', letterSpacing: '-.02em' }}>
-            Ad<span style={{ color: '#4ade80' }}>Plain</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <span style={{ fontWeight: 800, fontSize: '17px', color: 'var(--text-primary)', letterSpacing: '-.03em' }}>
+            Ad<span style={{ color: 'var(--green)' }}>Plain</span>
           </span>
           <span style={{
-            fontSize: '10px', color: '#504e48', background: '#1a1a17',
-            border: '1px solid #252522', borderRadius: '4px', padding: '2px 7px',
-            fontWeight: 600, letterSpacing: '.06em',
-          }}>
-            BETA
-          </span>
+            fontSize: '10px', color: 'var(--text-muted)', background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-subtle)', borderRadius: '4px', padding: '2px 6px',
+            fontWeight: 700, letterSpacing: '.06em',
+          }}>BETA</span>
         </div>
 
         {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Date range selector */}
+        <div className="nav-inner">
           <select
             value={dateRange}
             onChange={e => setDateRange(e.target.value)}
             disabled={loading}
             style={{
-              background: '#1a1a17', border: '1px solid #252522', color: '#a8a49c',
-              borderRadius: '7px', padding: '5px 10px', fontSize: '12px',
-              fontWeight: 600, cursor: loading ? 'wait' : 'pointer', outline: 'none',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)',
+              color: 'var(--text-secondary)', borderRadius: '7px', padding: '5px 10px',
+              fontSize: '12px', fontWeight: 600, cursor: loading ? 'wait' : 'pointer', outline: 'none',
             }}
           >
             <option value="last_7d">Last 7 days</option>
@@ -573,35 +595,27 @@ export default function App() {
             <option value="last_30d">Last 30 days</option>
           </select>
 
-          {/* Status link */}
-          <button
-            onClick={() => setShowStatus(true)}
-            style={{
-              background: 'none', border: 'none', color: '#504e48',
-              fontSize: '12px', cursor: 'pointer', padding: '5px 4px',
-            }}
-          >
+          <button className="nav-status-btn" onClick={() => setShowStatus(true)}>
             System Status
           </button>
 
-          {/* Last run */}
           {lastRun && !loading && (
-            <span style={{ fontSize: '12px', color: '#504e48' }}>
+            <span className="nav-updated">
               Updated {lastRun.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
 
-          {/* Refresh — always uses force=true */}
           <button
             onClick={() => fetchAnalysis(true)}
             disabled={loading}
             style={{
-              background: loading ? '#1a1a17' : 'rgba(74,222,128,.1)',
-              border: `1px solid ${loading ? '#252522' : 'rgba(74,222,128,.25)'}`,
-              color: loading ? '#504e48' : '#4ade80',
+              background: loading ? 'var(--bg-elevated)' : 'rgba(74,222,128,.1)',
+              border: `1px solid ${loading ? 'var(--border-subtle)' : 'rgba(74,222,128,.3)'}`,
+              color: loading ? 'var(--text-muted)' : 'var(--green)',
               borderRadius: '7px', padding: '6px 16px',
-              fontSize: '12px', fontWeight: 600,
+              fontSize: '12px', fontWeight: 700,
               cursor: loading ? 'wait' : 'pointer', letterSpacing: '.03em',
+              whiteSpace: 'nowrap',
             }}
           >
             {loading ? 'Analyzing...' : '↻ Refresh'}
@@ -610,48 +624,34 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: '860px', margin: '0 auto', padding: '52px 32px' }}>
+      <div className="content-pad" style={{ maxWidth: '880px', margin: '0 auto', padding: '44px 28px' }}>
 
         {/* Page title */}
-        <div style={{ marginBottom: '40px' }}>
+        <div style={{ marginBottom: '36px' }}>
           <h1 style={{
-            fontSize: '28px', fontWeight: 700, color: '#f0ede6',
-            letterSpacing: '-.03em', marginBottom: '6px',
+            fontSize: '26px', fontWeight: 800, color: 'var(--text-primary)',
+            letterSpacing: '-.03em', marginBottom: '5px',
           }}>
             Your Ad Performance
           </h1>
-          <p style={{ fontSize: '13px', color: '#504e48', letterSpacing: '.01em' }}>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
             {dateRangeLabel} · All accounts · Plain English
           </p>
         </div>
 
-        {/* Loading */}
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '100px 0' }}>
-            <div className="spinner" style={{
-              width: '40px', height: '40px', border: '2px solid #252522',
-              borderTop: '2px solid #4ade80', borderRadius: '50%',
-              margin: '0 auto 20px',
-            }} />
-            <div style={{ fontSize: '15px', color: '#6a6660', marginBottom: '6px' }}>
-              Pulling your ad data...
-            </div>
-            <div style={{ fontSize: '12px', color: '#3a3a35' }}>
-              AI is reading every ad · takes 20–40 seconds
-            </div>
-          </div>
-        )}
+        {/* Loading — skeleton cards + cycling message */}
+        {loading && <LoadingState />}
 
         {/* Error */}
         {error && !loading && (
           <div style={{
-            background: '#200a0a', border: '1px solid #4d1616',
-            borderRadius: '12px', padding: '24px', color: '#f87171',
+            background: 'var(--red-bg)', border: '1px solid rgba(248,113,113,.25)',
+            borderRadius: '14px', padding: '24px', color: 'var(--red)',
           }}>
-            <div style={{ fontWeight: 700, marginBottom: '6px' }}>Connection error</div>
-            <div style={{ fontSize: '13px', opacity: .75 }}>{error}</div>
-            <div style={{ fontSize: '12px', color: '#6a6660', marginTop: '12px' }}>
-              Make sure your backend server is running on port 3001.
+            <div style={{ fontWeight: 700, marginBottom: '6px', fontSize: '15px' }}>Connection error</div>
+            <div style={{ fontSize: '13px', opacity: .8, marginBottom: '10px' }}>{error}</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Make sure the backend server is running.
             </div>
           </div>
         )}
