@@ -16,7 +16,10 @@ services:
       - adplain-net
 
   adplain-frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - REACT_APP_API_KEY=${API_SECRET_KEY}
     container_name: adplain-frontend
     restart: unless-stopped
     ports:
