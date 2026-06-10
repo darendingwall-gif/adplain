@@ -1,0 +1,31 @@
+version: '3.8'
+services:
+  adplain-backend:
+    build: ./backend
+    container_name: adplain-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - META_ACCESS_TOKEN=${META_ACCESS_TOKEN}
+      - META_AD_ACCOUNT_ID=${META_AD_ACCOUNT_ID}
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - PORT=3001
+    networks:
+      - adplain-net
+
+  adplain-frontend:
+    build: ./frontend
+    container_name: adplain-frontend
+    restart: unless-stopped
+    ports:
+      - "3100:80"
+    depends_on:
+      - adplain-backend
+    networks:
+      - adplain-net
+
+networks:
+  adplain-net:
+    driver: bridge
